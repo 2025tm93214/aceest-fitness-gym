@@ -7,7 +7,7 @@ on:
 jobs:
   build-and-lint:
     name: Build & Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -29,7 +29,7 @@ jobs:
 
   docker-test:
     name: Docker Build & Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: build-and-lint
     steps:
       - name: Checkout code
