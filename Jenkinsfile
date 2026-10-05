@@ -41,10 +41,10 @@ pipeline {
         stage('Docker Build') {
             steps {
                 sh '''
-                    if command -v docker >/dev/null 2>&1; then
+                    if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
                         docker build -t aceest-fitness:${BUILD_NUMBER} .
                     else
-                        echo "Docker not available on this Jenkins agent - skipping image build"
+                        echo "Docker not accessible to Jenkins - skipping image build (verified in GitHub Actions)"
                     fi
                 '''
             }
