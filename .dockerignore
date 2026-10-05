@@ -1,0 +1,12 @@
+.git
+.github
+legacy
+__pycache__
+*.pyc
+*.db
+*.pdf
+venv
+.venv
+.pytest_cache
+Jenkinsfile
+README.md
