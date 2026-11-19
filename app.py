@@ -42,7 +42,7 @@ PROGRAMS = {
 }
 
 APP_NAME = "ACEest Fitness & Gym"
-DEFAULT_VERSION = "1.1.0"
+DEFAULT_VERSION = "2.0.0"
 
 WORKOUT_TYPES = {"Strength", "Hypertrophy", "Cardio", "Mobility"}
 
@@ -233,6 +233,38 @@ def create_app(test_config=None):
         if not row:
             return _error("Client not found", 404)
         return jsonify(dict(row))
+
+    @app.get("/clients/<name>/summary")
+    def client_summary(name):
+        """One-call overview of a client (added in v2.0.0)."""
+        db = get_db()
+        client = db.execute(
+            "SELECT name, age, weight, program, calories "
+            "FROM clients WHERE name=?", (name,)).fetchone()
+        if not client:
+            return _error("Client not found", 404)
+        avg = db.execute(
+            "SELECT AVG(adherence) AS a, COUNT(*) AS n FROM progress "
+            "WHERE client_name=?", (name,)).fetchone()
+        work = db.execute(
+            "SELECT COUNT(*) AS n, COALESCE(SUM(duration_min), 0) AS m "
+            "FROM workouts WHERE client_name=?", (name,)).fetchone()
+        metric = db.execute(
+            "SELECT weight, height FROM metrics WHERE client_name=? "
+            "ORDER BY id DESC LIMIT 1", (name,)).fetchone()
+        bmi = None
+        if metric:
+            bmi = calculate_bmi(metric["weight"], metric["height"])
+        return jsonify({
+            "client": dict(client),
+            "program_name": PROGRAMS[client["program"]]["name"],
+            "adherence": {
+                "weeks_logged": avg["n"],
+                "average": round(avg["a"], 1) if avg["a"] is not None else None},
+            "workouts": {"count": work["n"], "total_minutes": work["m"]},
+            "bmi": bmi,
+            "bmi_category": bmi_category(bmi) if bmi is not None else None,
+        })
 
     @app.delete("/clients/<name>")
     def delete_client(name):
