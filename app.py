@@ -5,6 +5,7 @@ Provides program catalogue, client management, weekly adherence
 tracking, workout logging and body-metric (BMI) endpoints.
 """
 import os
+import socket
 import sqlite3
 from datetime import date, datetime
 
@@ -39,6 +40,9 @@ PROGRAMS = {
         "calorie_factor": 26,
     },
 }
+
+APP_NAME = "ACEest Fitness & Gym"
+DEFAULT_VERSION = "1.1.0"
 
 WORKOUT_TYPES = {"Strength", "Hypertrophy", "Cardio", "Mobility"}
 
@@ -122,6 +126,7 @@ def _number(value, minimum=None, maximum=None):
 def create_app(test_config=None):
     app = Flask(__name__)
     app.config["DATABASE"] = os.environ.get("ACEEST_DB", "aceest_fitness.db")
+    app.config["APP_VERSION"] = os.environ.get("APP_VERSION", DEFAULT_VERSION)
     if test_config:
         app.config.update(test_config)
 
@@ -148,7 +153,16 @@ def create_app(test_config=None):
     # ----- general -----
     @app.get("/")
     def index():
-        return jsonify({"service": "ACEest Fitness & Gym", "status": "ok"})
+        return jsonify({"service": APP_NAME, "status": "ok",
+                        "version": app.config["APP_VERSION"]})
+
+    @app.get("/version")
+    def version():
+        """Which release (and which pod/host) answered - used to verify
+        rolling updates, canary splits and blue-green switches."""
+        return jsonify({"service": APP_NAME,
+                        "version": app.config["APP_VERSION"],
+                        "host": socket.gethostname()})
 
     @app.get("/health")
     def health():
@@ -165,6 +179,18 @@ def create_app(test_config=None):
         if not program:
             return _error("Program not found", 404)
         return jsonify(program)
+
+    @app.get("/calories")
+    def estimate_calories():
+        """Quick calorie estimate without saving a client (added in v1.1.0)."""
+        program = str(request.args.get("program", "")).upper()
+        weight = _number(request.args.get("weight"), 1, 500)
+        if program not in PROGRAMS:
+            return _error("program must be one of: FL, MG, BG")
+        if weight is None:
+            return _error("weight must be a positive number (kg)")
+        return jsonify({"program": program, "weight": weight,
+                        "calories": calculate_calories(weight, program)})
 
     # ----- clients -----
     @app.post("/clients")
