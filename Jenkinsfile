@@ -3,18 +3,39 @@ pipeline {
 
     options {
         timestamps()
-        timeout(time: 15, unit: 'MINUTES')
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
+    // Poll GitHub every ~2 minutes and build automatically on new commits
+    triggers {
+        pollSCM('H/2 * * * *')
+    }
+
+    environment {
+        IMAGE = '2025tm93214/aceest-fitness'
+        SONAR_HOST_URL = 'http://localhost:9000'
     }
 
     stages {
         stage('Checkout') {
             steps {
-                // Pulls the latest code from GitHub (configured in the job's SCM settings)
                 checkout scm
             }
         }
 
-        stage('Clean Build Environment') {
+        stage('Version') {
+            steps {
+                script {
+                    env.APP_VERSION = sh(returnStdout: true,
+                        script: '''grep '^DEFAULT_VERSION' app.py | cut -d'"' -f2''').trim()
+                    env.IMAGE_TAG = "${env.APP_VERSION}-b${env.BUILD_NUMBER}"
+                    echo "ACEest version ${env.APP_VERSION} -> image tag ${env.IMAGE_TAG}"
+                }
+            }
+        }
+
+        stage('Install & Lint') {
             steps {
                 sh '''
                     rm -rf .venv
@@ -22,38 +43,81 @@ pipeline {
                     . .venv/bin/activate
                     pip install --upgrade pip
                     pip install -r requirements.txt
+                    flake8 .
                 '''
             }
         }
 
-        stage('Lint') {
-            steps {
-                sh '. .venv/bin/activate && flake8 .'
-            }
-        }
-
-        stage('Unit Tests') {
-            steps {
-                sh '. .venv/bin/activate && pytest -v'
-            }
-        }
-
-        stage('Docker Build') {
+        stage('Unit Tests & Coverage') {
             steps {
                 sh '''
-                    if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-                        docker build -t aceest-fitness:${BUILD_NUMBER} .
-                    else
-                        echo "Docker not accessible to Jenkins - skipping image build (verified in GitHub Actions)"
-                    fi
+                    . .venv/bin/activate
+                    pytest -v --junitxml=test-results.xml \
+                        --cov=app --cov-report=xml --cov-report=term
                 '''
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                    sh '''
+                        docker run --rm --network host \
+                            --user "$(id -u):$(id -g)" \
+                            -e SONAR_USER_HOME=/tmp/.sonar \
+                            -e SONAR_HOST_URL="$SONAR_HOST_URL" \
+                            -e SONAR_TOKEN \
+                            -v "$WORKSPACE:/usr/src" \
+                            sonarsource/sonar-scanner-cli \
+                            -Dsonar.projectKey=aceest-fitness-gym \
+                            -Dsonar.projectName="ACEest Fitness & Gym" \
+                            -Dsonar.projectVersion="$APP_VERSION" \
+                            -Dsonar.sources=app.py \
+                            -Dsonar.tests=tests \
+                            -Dsonar.python.version=3.9 \
+                            -Dsonar.python.coverage.reportPaths=coverage.xml \
+                            -Dsonar.qualitygate.wait=true
+                    '''
+                }
+            }
+        }
+
+        stage('Docker Build & Container Tests') {
+            steps {
+                sh '''
+                    docker build -t ${IMAGE}:${IMAGE_TAG} .
+                    docker run --rm ${IMAGE}:${IMAGE_TAG} pytest -q
+                '''
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+                        usernameVariable: 'DH_USER', passwordVariable: 'DH_PASS')]) {
+                    sh '''
+                        echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
+                        docker push ${IMAGE}:${IMAGE_TAG}
+                        docker logout
+                    '''
+                }
+            }
+        }
+
+        stage('Archive Artifacts') {
+            steps {
+                sh 'echo "${IMAGE}:${IMAGE_TAG}" > build-info.txt'
+                archiveArtifacts artifacts: 'build-info.txt,coverage.xml,test-results.xml', fingerprint: true
             }
         }
     }
 
     post {
-        success { echo 'BUILD SUCCESS - ACEest pipeline passed.' }
+        always {
+            junit allowEmptyResults: true, testResults: 'test-results.xml'
+            sh 'rm -rf .venv .scannerwork || true'
+        }
+        success { echo "BUILD SUCCESS - ${env.IMAGE}:${env.IMAGE_TAG} published." }
         failure { echo 'BUILD FAILED - check the stage logs above.' }
-        cleanup { sh 'rm -rf .venv' }
     }
 }

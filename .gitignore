@@ -6,3 +6,8 @@ venv/
 .pytest_cache/
 .env
 *.pdf
+coverage.xml
+.coverage
+.scannerwork/
+test-results.xml
+build-info.txt
