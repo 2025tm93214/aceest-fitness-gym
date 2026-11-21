@@ -63,8 +63,6 @@ pipeline {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     sh '''
                         docker run --rm --network host \
-                            --user "$(id -u):$(id -g)" \
-                            -e SONAR_USER_HOME=/tmp/.sonar \
                             -e SONAR_HOST_URL="$SONAR_HOST_URL" \
                             -e SONAR_TOKEN \
                             -v "$WORKSPACE:/usr/src" \
