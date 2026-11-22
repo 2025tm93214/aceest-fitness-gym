@@ -1,0 +1,11 @@
+...............................................                          [100%]
+- generated xml file: /home/s2025tm93214/workspace/aceest-fitness-gym/reports/pytest-results.xml -
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.9.21-final-0 ________________
+
+Name     Stmts   Miss  Cover
+----------------------------
+app.py     214      9    96%
+----------------------------
+TOTAL      214      9    96%
+47 passed in 5.40s

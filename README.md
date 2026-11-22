@@ -132,3 +132,40 @@ the repository URL, branch `*/main`, script path `Jenkinsfile`, then Build Now.
   branches merged through pull requests.
 - Commits follow Conventional Commits (`feat:`, `fix:`, `test:`, `build:`,
   `ci:`, `docs:`).
+
+## Assignment 2: CI/CD with Jenkins, SonarQube, Docker Hub and Kubernetes
+
+### Versions
+| Version | Git tag | Docker image | Highlights |
+|---|---|---|---|
+| 1.0.0 | v1.0.0 | 2025tm93214/aceest-fitness:1.0.0 | Assignment 1 Flask service |
+| 1.1.0 | v1.1.0 | 2025tm93214/aceest-fitness:1.1.0 | `/version`, `/calories` |
+| 2.0.0 | v2.0.0 | 2025tm93214/aceest-fitness:2.0.0 | `/clients/<name>/summary` |
+
+Images: https://hub.docker.com/r/2025tm93214/aceest-fitness (Jenkins also pushes `<version>-b<build>` tags).
+
+### Jenkins pipeline
+`Jenkinsfile` polls GitHub every ~2 minutes (`pollSCM`) and runs: Checkout, Version,
+Install & Lint, Unit Tests & Coverage (JUnit + coverage.xml), SonarQube analysis with
+quality gate, Docker build and in-container tests, Push to Docker Hub, Archive artifacts.
+
+### SonarQube
+Project key `aceest-fitness-gym`, configured in `sonar-project.properties`.
+Reports are saved in `reports/`.
+
+### Kubernetes deployment strategies
+Run on Minikube (`minikube start --driver=docker --cpus=2 --memory=2200`).
+`/version` returns the version and pod name, which proves where traffic goes.
+
+| Strategy | Manifests | How it works |
+|---|---|---|
+| Rolling update + rollback | `k8s/deployment.yaml`, `k8s/service.yaml` | `kubectl set image` to 2.0.0, `kubectl rollout undo` back to 1.1.0 |
+| Blue-Green | `k8s/bluegreen/` | Two deployments; Service selector switched blue to green and back |
+| Canary | `k8s/canary/` | Stable and canary deployments behind one Service; traffic share follows replica counts |
+| Shadow | `k8s/shadow/` | nginx `mirror` copies every request to v2; users only see v1 responses |
+| A/B testing | `k8s/abtest/` | nginx routes on the `X-Variant: B` header to version B |
+
+```bash
+kubectl apply -f k8s/                     # rolling update demo (deployment + service)
+kubectl apply -f k8s/canary/canary.yaml   # or bluegreen/, shadow/, abtest/
+```
